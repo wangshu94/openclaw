@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   resolveAgentWorkspaceDir: vi.fn(),
   resolveDefaultAgentId: vi.fn(),
   getChannelPluginCatalogEntry: vi.fn(),
+  loadPluginManifestRegistry: vi.fn(),
   listChannelPluginCatalogEntries: vi.fn(),
   resolveChannelDefaultAccountId: vi.fn(),
   getChannelPlugin: vi.fn(),
@@ -30,6 +31,10 @@ vi.mock("../agents/agent-scope.js", () => ({
 vi.mock("../channels/plugins/catalog.js", () => ({
   getChannelPluginCatalogEntry: mocks.getChannelPluginCatalogEntry,
   listChannelPluginCatalogEntries: mocks.listChannelPluginCatalogEntries,
+}));
+
+vi.mock("../plugins/manifest-registry.js", () => ({
+  loadPluginManifestRegistry: mocks.loadPluginManifestRegistry,
 }));
 
 vi.mock("../channels/plugins/helpers.js", () => ({
@@ -82,6 +87,7 @@ describe("channel-auth", () => {
     mocks.normalizeChannelId.mockReturnValue("whatsapp");
     mocks.getChannelPlugin.mockReturnValue(plugin);
     mocks.getChannelPluginCatalogEntry.mockReturnValue(undefined);
+    mocks.loadPluginManifestRegistry.mockReturnValue({ plugins: [], diagnostics: [] });
     mocks.listChannelPluginCatalogEntries.mockReturnValue([]);
     mocks.loadConfig.mockReturnValue({ channels: { whatsapp: {} } });
     mocks.applyPluginAutoEnable.mockImplementation(({ config }) => ({ config, changes: [] }));
@@ -300,7 +306,7 @@ describe("channel-auth", () => {
     expect(mocks.loadChannelSetupPluginRegistrySnapshotForChannel).toHaveBeenCalledWith(
       expect.objectContaining({
         channel: "whatsapp",
-        pluginId: "whatsapp",
+        pluginId: "@openclaw/whatsapp",
         workspaceDir: "/tmp/workspace",
       }),
     );
