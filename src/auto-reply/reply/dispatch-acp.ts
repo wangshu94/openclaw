@@ -340,11 +340,19 @@ export async function tryDispatchAcpReply(params: {
     if (!acpInit) {
       return null;
     }
+    // Check dispatch and agent policy before writing any ACP metadata or starting a runtime.
+    if (resolveAcpDispatchPolicyError(params.cfg)) {
+      return null;
+    }
+    const candidateAgent = acpInit.acpAgentId ?? acpInit.agentId;
+    if (resolveAcpAgentPolicyError(params.cfg, candidateAgent)) {
+      return null;
+    }
     try {
       await acpManager.initializeSession({
         cfg: params.cfg,
         sessionKey,
-        agent: acpInit.acpAgentId ?? acpInit.agentId,
+        agent: candidateAgent,
         mode: acpInit.mode,
         cwd: acpInit.cwd,
         backendId: acpInit.backendId,
