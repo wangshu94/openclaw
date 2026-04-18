@@ -1,3 +1,4 @@
+import type { AcpSessionResolution } from "../acp/control-plane/manager.types.js";
 import {
   formatThinkingLevels,
   formatXHighModelHint,
@@ -17,8 +18,7 @@ import {
 import { formatErrorMessage } from "../infra/errors.js";
 import { buildOutboundSessionContext } from "../infra/outbound/session-context.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { normalizeAgentId } from "../routing/session-key.js";
-import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
+import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { applyVerboseOverride } from "../sessions/level-overrides.js";
 import { applyModelOverrideToSessionEntry } from "../sessions/model-overrides.js";
@@ -30,6 +30,7 @@ import { resolveAgentRuntimeConfig } from "./agent-runtime-config.js";
 import {
   listAgentIds,
   resolveAgentDir,
+  resolveAgentConfig,
   resolveEffectiveModelFallbacks,
   resolveSessionAgentId,
   resolveAgentSkillsFilter,
@@ -279,7 +280,34 @@ async function prepareAgentCommandExecution(
       );
     }
   }
-  const agentCfg = cfg.agents?.defaults;
+  // Resolve sessionAgentId and sessionResolution early for agent config selection
+  const sessionResolution = resolveSession({
+    cfg,
+    to: opts.to,
+    sessionId: opts.sessionId,
+    sessionKey: opts.sessionKey,
+    agentId: agentIdOverride,
+  });
+
+  const {
+    sessionId,
+    sessionKey,
+    sessionEntry: sessionEntryRaw,
+    sessionStore,
+    storePath,
+    isNewSession,
+    persistedThinking,
+    persistedVerbose,
+  } = sessionResolution;
+  const sessionAgentId =
+    agentIdOverride ??
+    resolveSessionAgentId({
+      sessionKey: sessionKey ?? opts.sessionKey?.trim(),
+      config: cfg,
+    });
+
+  const resolvedAgentCfg = resolveAgentConfig(cfg, sessionAgentId);
+  const agentCfg = resolvedAgentCfg ?? cfg.agents?.defaults;
   const configuredModel = resolveConfiguredModelRef({
     cfg,
     defaultProvider: DEFAULT_PROVIDER,
@@ -317,30 +345,6 @@ async function prepareAgentCommandExecution(
     overrideSeconds: timeoutSecondsRaw,
   });
 
-  const sessionResolution = resolveSession({
-    cfg,
-    to: opts.to,
-    sessionId: opts.sessionId,
-    sessionKey: opts.sessionKey,
-    agentId: agentIdOverride,
-  });
-
-  const {
-    sessionId,
-    sessionKey,
-    sessionEntry: sessionEntryRaw,
-    sessionStore,
-    storePath,
-    isNewSession,
-    persistedThinking,
-    persistedVerbose,
-  } = sessionResolution;
-  const sessionAgentId =
-    agentIdOverride ??
-    resolveSessionAgentId({
-      sessionKey: sessionKey ?? opts.sessionKey?.trim(),
-      config: cfg,
-    });
   const outboundSession = buildOutboundSessionContext({
     cfg,
     agentId: sessionAgentId,
@@ -358,12 +362,41 @@ async function prepareAgentCommandExecution(
   const runId = opts.runId?.trim() || sessionId;
   const { getAcpSessionManager } = await loadAcpManagerRuntime();
   const acpManager = getAcpSessionManager();
-  const acpResolution = sessionKey
-    ? acpManager.resolveSession({
-        cfg,
-        sessionKey,
-      })
-    : null;
+  // Check if agent config specifies ACP runtime for new sessions
+  let acpResolution: AcpSessionResolution | null = null;
+  if (sessionKey) {
+    acpResolution = acpManager.resolveSession({
+      cfg,
+      sessionKey,
+    });
+
+    // If this is a new session and the agent has ACP runtime configured,
+    // initialize ACP instead of falling back to embedded.
+    if (
+      isNewSession &&
+      acpResolution?.kind === "none" &&
+      resolvedAgentCfg?.runtime?.type === "acp"
+    ) {
+      try {
+        const acpConfig = resolvedAgentCfg.runtime.acp;
+        const acpAgent = normalizeAgentId(acpConfig?.agent || sessionAgentId);
+        const initialized = await acpManager.initializeSession({
+          cfg,
+          sessionKey,
+          agent: acpAgent,
+          mode: acpConfig?.mode === "persistent" ? "persistent" : "oneshot",
+          cwd: acpConfig?.cwd,
+          backendId: acpConfig?.backend || cfg.acp?.backend,
+        });
+        if (initialized) {
+          acpResolution = acpManager.resolveSession({ cfg, sessionKey });
+        }
+      } catch (error) {
+        // Fall back to embedded if ACP initialization fails.
+        log.warn(`ACP initialization failed for ${sessionKey}: ${String(error)}`);
+      }
+    }
+  }
 
   return {
     body,
