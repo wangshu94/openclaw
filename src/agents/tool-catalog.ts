@@ -190,6 +190,14 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     includeInOpenClawGroup: true,
   },
   {
+    id: "orchestrate",
+    label: "orchestrate",
+    description: "High-level multi-agent orchestration",
+    sectionId: "sessions",
+    profiles: ["coding"],
+    includeInOpenClawGroup: true,
+  },
+  {
     id: "session_status",
     label: "session_status",
     description: SESSION_STATUS_TOOL_DISPLAY_SUMMARY,

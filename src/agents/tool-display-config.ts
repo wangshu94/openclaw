@@ -456,6 +456,32 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
         },
       },
     },
+    orchestrate: {
+      emoji: "🎼",
+      title: "Orchestrate",
+      actions: {
+        spawn_all: {
+          label: "spawn all",
+          detailKeys: ["total", "accepted"],
+        },
+        status: {
+          label: "status",
+          detailKeys: ["completionPct", "active", "total"],
+        },
+        steer: {
+          label: "steer",
+          detailKeys: ["target"],
+        },
+        kill: {
+          label: "kill",
+          detailKeys: ["target"],
+        },
+        collect: {
+          label: "collect",
+          detailKeys: ["completed", "total"],
+        },
+      },
+    },
     agents_list: {
       emoji: "🧭",
       title: "Agents",
